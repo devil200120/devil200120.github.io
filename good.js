@@ -1,172 +1,131 @@
+const containerEl = document.querySelector(".container");
+const canvasEl = document.querySelector("canvas#neuro");
+const devicePixelRatio = Math.min(window.devicePixelRatio, 2);
 
 
-var scene, camera, renderer;
+const pointer = {
+    x: 0,
+    y: 0,
+    tX: 0,
+    tY: 0,
+};
 
-init();
+
+let uniforms;
+const gl = initShader();
+
+setupEvents();
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
 render();
 
-function init() {
+function initShader() {
+    const vsSource = document.getElementById("vertShader").innerHTML;
+    const fsSource = document.getElementById("fragShader").innerHTML;
 
-    // S C E N E
-    scene = new THREE.Scene();
+    const gl = canvasEl.getContext("webgl") || canvasEl.getContext("experimental-webgl");
 
+    if (!gl) {
+        alert("WebGL is not supported by your browser.");
+    }
 
-    // C A M E R A
-    camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.0001, 10000 );
-    camera.position.set( 0, 0, 5 );
-    scene.add( camera );
+    function createShader(gl, sourceCode, type) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, sourceCode);
+        gl.compileShader(shader);
 
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error("An error occurred compiling the shaders: " + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
 
-    // R E N D E R E R
-    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+        return shader;
+    }
 
+    const vertexShader = createShader(gl, vsSource, gl.VERTEX_SHADER);
+    const fragmentShader = createShader(gl, fsSource, gl.FRAGMENT_SHADER);
 
-    document.querySelector('[data-js="stage"]').appendChild(renderer.domElement);
+    function createShaderProgram(gl, vertexShader, fragmentShader) {
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
 
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error("Unable to initialize the shader program: " + gl.getProgramInfoLog(program));
+            return null;
+        }
 
+        return program;
+    }
+
+    const shaderProgram = createShaderProgram(gl, vertexShader, fragmentShader);
+    uniforms = getUniforms(shaderProgram);
+
+    function getUniforms(program) {
+        let uniforms = [];
+        let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < uniformCount; i++) {
+            let uniformName = gl.getActiveUniform(program, i).name;
+            uniforms[uniformName] = gl.getUniformLocation(program, uniformName);
+        }
+        return uniforms;
+    }
+
+    const vertices = new Float32Array([-1., -1., 1., -1., -1., 1., 1., 1.]);
+
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    gl.useProgram(shaderProgram);
+
+    const positionLocation = gl.getAttribLocation(shaderProgram, "a_position");
+    gl.enableVertexAttribArray(positionLocation);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    return gl;
 }
-
-
-
-
-
-
-
-
-
-
-/////////////////////////////////////
-// O R B I T E R
-/////////////////////////////////////
-
-// geometry for orbiter
-var orbitGeometry = new THREE.IcosahedronGeometry(0.07, 1);
-
-// color for each orbiter/light
-var colors = [ 0xff0000, 0x00ff00, 0x0000ff ];
-
-
-for ( i = 0; i < 3; i++ ) {
-
-    // setting different color to each orbiter
-    var orbitMaterial = new THREE.MeshBasicMaterial({
-        color: colors[i]
-    });
-
-    // wraps one orbiter and one light
-    // provides rotation
-    wrapper = new THREE.Object3D( 3, 0, 0 );
-    wrapper.rotation.order = 'ZXY';
-    wrapper.rotation.set( 0, 0, 0 - i );
-    scene.add( wrapper );
-
-    // glowing light
-    light = new THREE.PointLight( colors[i], 2, 1 );
-    light.position.set(0, 1, 1);
-    wrapper.add( light );
-
-    // orbiter
-    orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
-    orbit.position.set( light.position.x, light.position.y, light.position.z );
-    wrapper.add( orbit );
-
-    // animation for each wrapper
-    TweenMax.to( wrapper.rotation, 2, {
-        ease: Power0.easeNone,
-        x: Math.PI * 2,
-        repeat: -1,
-        delay: i * -0.7
-    });
-
-}
-
-
-
-
-
-
-
-/////////////////////////////////////
-// S P H E R E
-/////////////////////////////////////
-
-
-var sphere,
-    sunlight;
-
-function createSphere() {
-
-    sphereGeometry = new THREE.IcosahedronGeometry(1, 1);
-    sphereMaterial = new THREE.MeshPhongMaterial({
-      color: 0x323232,
-      shading: THREE.FlatShading,
-      shininess: 0
-    });
-
-    sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    scene.add( sphere );
-
-
-    TweenMax.to( sphere.rotation, 60, {
-        ease: Power0.easeNone,
-        x: Math.PI * 2,
-        y: Math.PI * 2,
-        repeat: -1
-    });
-
-
-    // add light to make the sphere visible
-    sunLight = new THREE.PointLight( 0xffffff, 0.7, 20 );
-    sunLight.position.set(10, 6, 7);
-
-    scene.add( sunLight );
-
-}
-
-createSphere();
-
-
-
-
-
-
-
-
-/////////////////////////////////////
-// R E S I Z E   E V E N T
-/////////////////////////////////////
-
- window.addEventListener('resize', resizeHandler);
-
-
-
-
-
-
-
-
-
- /////////////////////////////////////
- // R E N D E R E R
- /////////////////////////////////////
 
 function render() {
+    const currentTime = performance.now();
 
+    pointer.x += (pointer.tX - pointer.x) * .5;
+    pointer.y += (pointer.tY - pointer.y) * .5;
+
+    gl.uniform1f(uniforms.u_time, currentTime);
+    gl.uniform2f(uniforms.u_pointer_position, pointer.x / window.innerWidth, 1 - pointer.y / window.innerHeight);
+    gl.uniform1f(uniforms.u_scroll_progress, window["pageYOffset"] / (2 * window.innerHeight));
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
-    renderer.render(scene, camera);
-
 }
 
+function resizeCanvas() {
+    canvasEl.width = window.innerWidth * devicePixelRatio;
+    canvasEl.height = window.innerHeight * devicePixelRatio;
+    gl.uniform1f(uniforms.u_ratio, canvasEl.width / canvasEl.height);
+    gl.viewport(0, 0, canvasEl.width, canvasEl.height);
+}
 
+function setupEvents() {
+    window.addEventListener("pointermove", e => {
+        updateMousePosition(e.clientX, e.clientY);
+    });
+    window.addEventListener("touchmove", e => {
+        updateMousePosition(e.targetTouches[0].clientX, e.targetTouches[0].clientY);
+    });
+    window.addEventListener("click", e => {
+        updateMousePosition(e.clientX, e.clientY);
+    });
 
-
-/////////////////////////////////////
-// R E S I Z E   H A N D L E R
-/////////////////////////////////////
-
-function resizeHandler() {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    function updateMousePosition(eX, eY) {
+        pointer.tX = eX;
+        pointer.tY = eY;
+    }
 }
